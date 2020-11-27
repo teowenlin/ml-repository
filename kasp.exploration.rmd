@@ -1,0 +1,88 @@
+---
+title: "kasp.exploration"
+author: "Teo Wen Lin"
+date: "31/08/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lubridate)
+```
+```{r cars}
+daily <- read.csv("daily-2020.08.08-2020.08.27.csv", stringsAsFactors = FALSE)
+hourly <- read.csv("hourly-2020.08.11-2020.08.27.csv", stringsAsFactors = FALSE)
+
+daily[1] <- NULL
+head(daily)
+
+hourly[1] <- NULL
+head(hourly)
+```
+```{r}
+# Convert dates from character to date format
+
+daily$date <- dmy(daily$date)
+hourly$date <- dmy(hourly$date)
+
+head(daily)
+head(hourly)
+
+```
+### Daily % Data for all countries
+
+```{r}
+# Summary and structure of daily data
+summary(daily) # note no NA values
+```
+
+```{r}
+# Plot for each threat type
+hist(daily$local_infection, bin) # positive skew
+hist(daily$ondemand_scan) # positive skew
+hist(daily$malicious_mail) # heavy positive skew, with bulk of values at <0.005 
+hist(daily$network_attack) # heavy positive skew, with bulk of values at <0.1 and outliers (?) at 0.4-0.5
+hist(daily$web_threat) # trailing tail - positive skew
+hist(daily$vulnerabilities) # trailing tail - positive skew
+hist(daily$spam) # heavy positive skew, with bulk of values at <0.02 and outliers (?) at 0.4-0.5
+
+# Plot for each country?
+daily[daily$country=="People's Republic of China",]
+
+# Plot country stats against other country stats from UNdata?
+
+```
+
+
+```{r}
+# Plot graph of selected countr(ies) over time to see whether % of users infected is increasing
+
+
+```
+
+## Daily numbers data for 8 selected countries
+
+```{r}
+# Join the 2020.08.08 and 2020.08.30 files together (total 51 days/7 weeks)
+
+# Analyse weekly trends for each country separately
+
+# Then compare them to each other
+```
+
+
+
+## Hourly data for 8 selected countries
+
+```{r}
+# Convert time to correct time zone for each country
+
+# Analyse hourly trend per day for each country
+
+# Compare countries to each other
+
+```
+
+
+
+
