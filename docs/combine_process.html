@@ -370,14 +370,14 @@ summary {
 
 
 <div id="introduction" class="section level4">
-<h4>Introduction</h4>
+<h4>1. Introduction</h4>
 <p>This document describes the collation and cleaning of cyberthreat data downloaded from the Kaspersky Statistics webpage (<a href="https://statistics.securelist.com/" class="uri">https://statistics.securelist.com/</a>). Data is published by country, on an hourly and daily basis.</p>
-<p>Daily data was collected for all countries from 8 August to 19 September 2020.</p>
+<p>Daily data was collected for 215 countries from 8 August to 19 September 2020.</p>
 <p>Hourly data was collected for 8 countries (US, China, India, Russia, Australia, Bangladesh, Singapore and Algeria) from 11 August to 19 September 2020. With the exception of Singapore, these countries have large populations and had high proportions of at least 1 type of cyberthreat.</p>
 </div>
 <div id="combine-data-from-source" class="section level4">
-<h4>Combine data from source</h4>
-<p>The original data was presented on the webpage on a daily basis (for the previous day). Data was collected for each day in an excel file with separate sheets for each type of cyberthreat (sheets 1 to 7). Hourly data of the 8 abovementioned countries were also saved in separate sheets (sheets 8 to 15).</p>
+<h4>2. Combine data from source</h4>
+<p>The original data was presented on the Kaspersky Statistics webpage on a daily basis (for the previous day). Data was collected for each day in an excel file with separate sheets for each type of cyberthreat (sheets 1 to 7). Hourly data of the 8 abovementioned countries were also saved in separate sheets (sheets 8 to 15).</p>
 <p>The first step is to combine all of the daily data into a single dataset, and all of the hourly data into a single dataset.</p>
 <pre class="r"><code># Read libraries
 library(readxl)
@@ -764,7 +764,7 @@ dim(compiled.hourly)</code></pre>
 colnames(compiled.hourly)[c(4,7,8)] &lt;- c(&quot;local_infection&quot;, &quot;web_threat&quot;, &quot;network_attack&quot;)</code></pre>
 </div>
 <div id="initial-exploration-of-data" class="section level3">
-<h3>Initial Exploration of data</h3>
+<h3>3. Initial Exploration of data</h3>
 <p>During the collection process, some data was not updated for that day which resulted in missing data.</p>
 <p>We do exploration to view the proportion of missing values.</p>
 <p>Starting with the compiled daily data:</p>
@@ -885,7 +885,6 @@ ggplot(c.d2) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars
 ##   spam            0.84293194 0.15706806</code></pre>
 <p>With countries with mostly zero values removed, the histogram of each cyberthreat has a clearer shape. We can see that web threats and vulnerabilities have somewhat normal distributions, local infections and on demand scans appear to be a combination of 2 normal distributions (or a normal distribution with positive skew), and malicious mail, network attacks and spam appear to have rational distributions.</p>
 <p>Note that the values are the proportion of Kaspersky users in each country who experienced a cyberthreat, and these histograms display values for all countries, which differ greatly in size and wealth. The positive skews are likely a result of these differences.</p>
-<p>(Note to self: consider transforming the last 3 to view whether it’s more normal?)</p>
 <p>Next, we can plot the data for a randomly chosen country, to view the daily pattern and find missing dates.</p>
 <pre class="r"><code># daily.filtered &lt;- daily.filtered[order(daily.filtered$country),]
 
@@ -930,7 +929,23 @@ ggplot() +
 # Find the mean for Wednesdays (12, 19, 26 Aug, 2 Sep) for each country
 
 wednesdays &lt;- daily.filtered[daily.filtered$date %in% as.Date(c(&quot;2020-08-12&quot;, &quot;2020-08-19&quot;, &quot;2020-08-26&quot;, &quot;2020-09-02&quot;)),]
-wed_new &lt;- wednesdays %&gt;%
+
+head(wednesdays)</code></pre>
+<pre><code>##           date                          country local_infection ondemand_scan
+## 864 2020-08-12           Arab Republic of Egypt         0.02675       0.02572
+## 865 2020-08-12               Argentine Republic         0.02238       0.02790
+## 868 2020-08-12              Bailiwick of Jersey         0.01709       0.02379
+## 869 2020-08-12                         Barbados         0.01451       0.01730
+## 870 2020-08-12                           Belize         0.01252       0.01332
+## 872 2020-08-12 Bolivarian Republic of Venezuela         0.02412       0.02768
+##     malicious_mail network_attack web_threat vulnerabilities    spam
+## 864        0.00455        0.05386    0.02487         0.00020 0.00029
+## 865        0.00361        0.02339    0.01222         0.00079 0.01236
+## 868        0.00067        0.00000    0.01173         0.00101 0.00001
+## 869        0.00251        0.06585    0.01702         0.00056 0.00001
+## 870        0.00363        0.01352    0.01050         0.00020 0.00004
+## 872        0.00100        0.02389    0.01507         0.00051 0.00018</code></pre>
+<pre class="r"><code>wed_new &lt;- wednesdays %&gt;%
   group_by(country) %&gt;%
   summarise(local_infection = mean(local_infection),
             ondemand_scan = mean(ondemand_scan),
@@ -1051,7 +1066,7 @@ dim(na.webthreat)</code></pre>
 ## #   network_attack &lt;dbl&gt;, vulnerabilities &lt;dbl&gt;, spam &lt;dbl&gt;</code></pre>
 </div>
 <div id="imputation-of-missing-values" class="section level3">
-<h3>Imputation of Missing Values</h3>
+<h3>4. Imputation of Missing Values</h3>
 <p>To impute the missing data in the hourly dataset, first I tried using the imputeTS package to do the imputation automatically. However, this did not result in reasonable values - some were even negative.</p>
 <p>Looking at the documentation for imputeTS, this seems to be because the formulae for imputation do not take into account seasonal variation.</p>
 <pre class="r"><code>## Use imputeTS package on segment of the data (web threats in China)
@@ -1330,6 +1345,7 @@ hourly4 &lt;- hourly4[order(hourly4$country, hourly4$date),]</code></pre>
 <p>This concludes part one, the compilation and pre-processing of Kaspersky data. In the next part, we will do time series analysis of the data.</p>
 <pre class="r"><code>write.csv(daily.filtered, &quot;cleaned/dailydata.csv&quot;)
 write.csv(hourly4, &quot;cleaned/hourlydata.csv&quot;)</code></pre>
+<p>This project was carried out as part of the fundamental certificates in Analytics Project Management and Business Analytics Practice in the NUS MTech program. It is my portion of a self-directed group project on the wider topic of cybersecurity threats and attacks.</p>
 </div>
 
 
