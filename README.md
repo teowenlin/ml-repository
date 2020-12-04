@@ -1,7 +1,7 @@
 # ml-repository
 Machine learning projects
 
-1. Reddit Project (reddit_project_expanded.ipynb; reddit_project_expanded.html)
+1. Reddit Project (docs/reddit_project_expanded.ipynb; docs/reddit_project_expanded.html)
 - scraping of text data from reddit.com/r/singapore social media site
 - forming wordclouds of each reddit thread
 - clustering of posts into clusters 
