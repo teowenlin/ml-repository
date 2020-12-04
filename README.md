@@ -1,13 +1,17 @@
 # ml-repository
 Machine learning projects
 
-1. Reddit Project (docs/reddit_project_expanded.ipynb; docs/reddit_project_expanded.html)
+1. Reddit Project (reddit_project_expanded.ipynb; reddit_project_expanded.html)
 - scraping of text data from reddit.com/r/singapore social media site
 - forming wordclouds of each reddit thread
 - clustering of posts into clusters 
 
-2. Kaspersky data project (docs/combine_process.html; docs/timeseries_analysis.html)
+2. Kaspersky data project (combine_process.html; timeseries_analysis.html)
 - collation of data downloaded from Kaspersky Statistics webpage
 - cleaning, filtering, imputation of missing data, adjustment of timezones
 - time series analysis on hourly data
 
+3. Rotten Tomatoes data project  
+- graph exploration of movie ratings and critics using data scraped from Rotten Tomatoes (Basic_ratings_graph.py)
+- collaborative filtering - alternating least squares algorithm for recommendation of movies to critics based on latent factors in movie titles (CF-ALS.py)
+- colaborative filtering - recommending movies to critics based on critic's similarity to other critics in graph/network (CF_User_Based.py) (ongoing)
