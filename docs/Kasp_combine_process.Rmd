@@ -1,0 +1,762 @@
+---
+title: "Kaspersky Data Part one: compilation and pre-processing"
+author: "Teo Wen Lin"
+date: "03/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### 1. Introduction
+
+This document describes the collation and cleaning of cyberthreat data downloaded from the Kaspersky Statistics webpage (https://statistics.securelist.com/). Data is published by country, on an hourly and daily basis.
+
+Daily data was collected for 215 countries from 8 August to 19 September 2020.
+
+Hourly data was collected for 8 countries (US, China, India, Russia, Australia, Bangladesh, Singapore and Algeria) from 11 August to 19 September 2020. With the exception of Singapore, these countries have large populations and had high proportions of at least 1 type of cyberthreat.
+
+#### 2. Combine data from source
+
+The original data was presented on the Kaspersky Statistics webpage on a daily basis (for the previous day). Data was collected for each day in an excel file with separate sheets for each type of cyberthreat (sheets 1 to 7). Hourly data of the 8 abovementioned countries were also saved in separate sheets (sheets 8 to 15).
+
+2.1 The first step is to combine all of the daily data into a single dataset, and all of the hourly data into a single dataset.
+
+```{r intro, message=FALSE}
+# Read libraries
+library(readxl)
+library(lubridate)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(imputeTS)
+library(DMwR)
+
+# Complete list of countries, obtained from the daily data 
+
+countries <- c("Åland Islands",
+               "Anguilla",
+               "Antigua and Barbuda",                                                     
+               "Arab Republic of Egypt",                                                  
+               "Argentine Republic",                                                      
+               "Aruba",  
+               "Bailiwick of Guernsey",
+               "Bailiwick of Jersey",                                                     
+               "Barbados",                                                                
+               "Belize",                                                                  
+               "Bermuda",                                                                 
+               "Bolivarian Republic of Venezuela",                                        
+               "Bosnia and Herzegovina",                                                  
+               "Burkina Faso",                                                            
+               "Canada",                                                                  
+               "Cayman Islands",                                                          
+               "Central African Republic",                                                
+               "Co-operative Republic of Guyana",                                         
+               "Commonwealth of Australia",                                               
+               "Commonwealth of Dominica",                                                
+               "Commonwealth of Puerto Rico",                                             
+               "Commonwealth of the Bahamas",  
+               "Commonwealth of the Northern Mariana Islands",
+               "Congo (Democratic Republic of the)",                                      
+               "Country of Curaçao",                                                      
+               "Czech Republic", 
+               "Democratic Republic of São Tomé and Príncipe",
+               "Democratic Republic of Timor-Leste",                                      
+               "Democratic Socialist Republic of Sri Lanka",                              
+               "Department of Mayotte",                                                   
+               "Dominican Republic",                                                      
+               "Faroe Islands",                                                           
+               "Federal Democratic Republic of Ethiopia",                                 
+               "Federal Democratic Republic of Nepal",                                    
+               "Federal Republic of Germany",                                             
+               "Federal Republic of Nigeria",                                             
+               "Federal Republic of Somalia",                                             
+               "Federation of Saint Christopher and Nevisa",                              
+               "Federative Republic of Brazil",                                           
+               "French Polynesia",                                                        
+               "French Republic",                                                         
+               "Gabonese Republic",                                                       
+               "Georgia", 
+               "Gibraltar",
+               "Grand Duchy of Luxembourg",                                               
+               "Grenada",                                                                 
+               "Guadeloupe",                                                              
+               "Guam",                                                                    
+               "Guiana",                                                                  
+               "Hashemite Kingdom of Jordan",                                             
+               "Hellenic Republic",                                                       
+               "Hong Kong Special Administrative Region of the People's Republic of China",
+               "Hungary",                                                                 
+               "Iceland",                                                                 
+               "Independent State of Papua New Guinea",                                   
+               "Independent State of Samoa",                                              
+               "Islamic Republic of Afghanistan",                                         
+               "Islamic Republic of Iran",                                                
+               "Islamic Republic of Mauritania",                                          
+               "Islamic Republic of Pakistan",                                            
+               "Isle of Man",                                                             
+               "Italian Republic",                                                        
+               "Jamaica",                                                                 
+               "Japan",                                                                   
+               "Kingdom of Bahrain",                                                      
+               "Kingdom of Belgium",                                                      
+               "Kingdom of Bhutan",                                                       
+               "Kingdom of Cambodia",                                                     
+               "Kingdom of Denmark",                                                      
+               "Kingdom of Eswatini",                                                     
+               "Kingdom of Lesotho",                                                      
+               "Kingdom of Morocco",                                                      
+               "Kingdom of Norway",                                                       
+               "Kingdom of Saudi Arabia",                                                 
+               "Kingdom of Spain",                                                        
+               "Kingdom of Sweden",                                                       
+               "Kingdom of Thailand",                                                     
+               "Kingdom of the Netherlands", 
+               "Kingdom of Tonga",
+               "Kyrgyz Republic",                                                         
+               "Lao People's Democratic Republic",                                        
+               "Lebanese Republic",                                                       
+               "Macao Special Administrative Region of the People's Republic of China",   
+               "Malaysia",                                                                
+               "Martinique",                                                              
+               "Mongolia",                                                                
+               "Montenegro",                                                              
+               "Most Serene Republic of San Marino",                                      
+               "Nation of Brunei, Abode of Peace",                                        
+               "New Caledonia",                                                           
+               "New Zealand",                                                             
+               "Oriental Republic of Uruguay",                                            
+               "People's Democratic Republic of Algeria",                               
+               "People's Republic of Bangladesh",                                         
+               "People's Republic of China",                                              
+               "Plurinational State of Bolivia",                                          
+               "Portuguese Republic",                                                     
+               "Principality of Andorra",                                                 
+               "Principality of Liechtenstein",                                           
+               "Principality of Monaco",                                                  
+               "Republic of Albania",                                                     
+               "Republic of Angola",                                                      
+               "Republic of Armenia",                                                     
+               "Republic of Austria",                                                     
+               "Republic of Azerbaijan",                                                  
+               "Republic of Belarus",                                                   
+               "Republic of Benin",                                                       
+               "Republic of Botswana",                                                    
+               "Republic of Bulgaria",                                                  
+               "Republic of Burundi",                                                     
+               "Republic of Cabo Verde",                                                  
+               "Republic of Cameroon",                                                    
+               "Republic of Chad",                                                        
+               "Republic of Chile",                                                       
+               "Republic of China (Taiwan)",                                              
+               "Republic of Colombia",                                                    
+               "Republic of Costa Rica",                                                  
+               "Republic of Côte d'Ivoire",                                               
+               "Republic of Croatia",                                                     
+               "Republic of Cuba",                                                        
+               "Republic of Cyprus",                                                      
+               "Republic of Djibouti",                                                    
+               "Republic of Ecuador",                                                     
+               "Republic of El Salvador",                                                 
+               "Republic of Equatorial Guinea",                                           
+               "Republic of Estonia",                                                     
+               "Republic of Fiji",                                                        
+               "Republic of Finland",                                                     
+               "Republic of Ghana",                                                       
+               "Republic of Guatemala",                                                   
+               "Republic of Guinea",                                                      
+               "Republic of Guinea-Bissau",                                               
+               "Republic of Haiti",                                                     
+               "Republic of Honduras",                                                    
+               "Republic of India",                                                       
+               "Republic of Indonesia",                                                   
+               "Republic of Iraq",                                                        
+               "Republic of Ireland",                                                     
+               "Republic of Kazakhstan",                                                  
+               "Republic of Kenya",                                                       
+               "Republic of Korea",                                                       
+               "Republic of Latvia",                                                      
+               "Republic of Liberia",                                                     
+               "Republic of Lithuania",                                                   
+               "Republic of Macedonia",                                                   
+               "Republic of Madagascar",                                                  
+               "Republic of Malawi",                                                      
+               "Republic of Mali",                                                        
+               "Republic of Malta",                                                       
+               "Republic of Mauritius",                                                   
+               "Republic of Moldova",                                                     
+               "Republic of Mozambique",                                                  
+               "Republic of Namibia",                                                     
+               "Republic of Nicaragua",                                                   
+               "Republic of Niger",                                                       
+               "Republic of Palau",                                                       
+               "Republic of Panama",                                                      
+               "Republic of Paraguay",                                                    
+               "Republic of Peru",                                                        
+               "Republic of Poland",                                                      
+               "Republic of Rwanda",                                                      
+               "Republic of Senegal",                                                     
+               "Republic of Serbia",                                                      
+               "Republic of Seychelles",                                                  
+               "Republic of Sierra Leone",                                                
+               "Republic of Singapore",                                                   
+               "Republic of Slovenia",                                                    
+               "Republic of South Africa",                                                
+               "Republic of Suriname",                                                    
+               "Republic of Tajikistan",                                                  
+               "Republic of the Congo",                                                   
+               "Republic of the Gambia",                                                  
+               "Republic of the Maldives",                                                
+               "Republic of the Philippines",                                             
+               "Republic of the Sudan",                                                   
+               "Republic of the Union of Myanmar",                                        
+               "Republic of Trinidad and Tobago",                                         
+               "Republic of Turkey",                                                      
+               "Republic of Uganda",                                                      
+               "Republic of Uzbekistan",                                                  
+               "Republic of Vanuatu",
+               "Republic of Yemen",                                                       
+               "Republic of Zambia",                                                      
+               "Republic of Zimbabwe",                                                    
+               "Réunion Island",                                                          
+               "Romania",                                                                 
+               "Russian Federation",                                                      
+               "Saint Lucia",                                                             
+               "Saint Vincent and the Grenadines",                                        
+               "Slovak Republic",                                                         
+               "Socialist Republic of Vietnam", 
+               "Solomon Islands",
+               "South Sudan",                                                             
+               "State of Israel",                                                         
+               "State of Kuwait",                                                         
+               "State of Libya",                                                          
+               "State of Palestine",                                                      
+               "State of Qatar",                                                          
+               "Sultanate of Oman",                                                       
+               "Swiss Confederation",                                                     
+               "Syrian Arab Republic",   
+               "Territory of Norfolk Island",
+               "Togolese Republic",                                                       
+               "Tunisian Republic",                                                       
+               "Turkmenistan",  
+               "Turks and Caicos Islands",
+               "Ukraine", 
+               "Union of the Comoros",
+               "United Arab Emirates",                                                    
+               "United Kingdom of Great Britain and Northern Ireland",                    
+               "United Mexican States",                                                   
+               "United Republic of Tanzania",                                             
+               "United States of America",                                                
+               "Virgin Islands",
+               "Virgin Islands of the United States")
+```
+
+Some countries did not experience particular types of threats on certain days. On these days, those countries were not included in the data. However, in order to combine data for all days, the number of rows had to be equal, so these "missing" countries had to be included with corresponding zero values.
+
+```{r}
+
+# function to add missing countries with zero values to dataframe, and order alphabetically
+
+add_miss_countries <- function(x){
+  if (length(which(!countries %in% x$country)) != 0){
+    miss = countries[which(!countries %in% x$country)] 
+    cmiss <- data.frame(country = miss, value = 0)
+    x <- rbind(x, cmiss)
+  }
+  x <- x[order(x$country),]
+}
+```
+
+Combining the daily data together.
+The date in the filename is the date of collection, while the data inside the file is for the previous date.
+
+```{r warning=FALSE}
+# Range of dates that data was collected
+daterange <- seq(as.Date("2020/08/09"), by = "day", length.out = 44)
+
+# Empty dataframe for compiled data
+compiled.daily <- data.frame()
+
+# For loop to combine data for every day in daterange
+for (i in 1:length(daterange)){
+  dayc <- as.character(day(daterange[i]))
+  dayc <- ifelse(nchar(dayc) == 1, paste0("0", dayc), dayc)
+  monthc <- as.character(month(daterange[i]))
+  monthc <- ifelse(nchar(monthc) == 1, paste0("0", monthc), monthc)
+  
+  # Read in sheets 1 to 7, for each type of cyberthreat
+  infection <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 1)
+  scan <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 2)
+  mail <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 3)
+  web <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 4)
+  network <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 5)
+  vuln <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 6)
+  spam <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 7)
+  
+  # For each type of cyberthreat, add rows for missing countries
+  infection <- add_miss_countries(infection)
+  scan <- add_miss_countries(scan)
+  mail <- add_miss_countries(mail)
+  network <- add_miss_countries(network)
+  web <- add_miss_countries(web)
+  vuln <- add_miss_countries(vuln)
+  spam <- add_miss_countries(spam)
+  
+  # Bind data for all cyberthreats in a single dataframe
+  comb <- cbind(infection, scan$value, mail$value, network$value, web$value, vuln$value,   spam$value)
+  colnames(comb) <- c("country","local_infection", "ondemand_scan", 
+                    "malicious_mail", "network_attack",
+                    "web_threat", "vulnerabilities", "spam")
+  
+  # Add column for date
+  dayv <- as.character(day(daterange[i] - 1))
+  dayv <- ifelse(nchar(dayv) == 1, paste0("0", dayv), dayv)
+  monthv <- as.character(month(daterange[i] - 1))
+  monthv <- ifelse(nchar(monthv) == 1, paste0("0", monthv), monthv)
+  comb$date <- as.Date(sprintf("2020-%s-%s", monthv, dayv))
+  # re-order to put date column in front
+  comb <- comb[,c(9,1:8)]
+  
+  # Add that day's data to the compiled dataframe
+  compiled.daily <- rbind(compiled.daily, comb)
+}
+
+dim(compiled.daily)
+head(compiled.daily)
+```
+The compiled dataset of daily data has 9460 rows, comprising data for 44 days for 215 countries.
+
+2.2 Next, combining the hourly data:
+
+```{r}
+# Range of dates that data was collected
+daterange2 <- seq(as.Date("2020/08/11"), by = "day", length.out = 42)
+
+# Function to round datetime and split date and hour
+clean_date <- function(x){
+  x$date <- round_date(x$date, unit = "second")
+  x$hour <- hour(x$date)
+  return(x)
+}
+```
+
+
+```{r}
+# Empty dataframe for compiled hourly data
+compiled.hourly <- data.frame()
+
+# For loop to combine hourly data for each day into a single dataframe
+
+for (i in 1:length(daterange2)){
+  dayc <- as.character(day(daterange2[i]))
+  dayc <- ifelse(nchar(dayc) == 1, paste0("0", dayc), dayc)
+  monthc <- as.character(month(daterange2[i]))
+  monthc <- ifelse(nchar(monthc) == 1, paste0("0", monthc), monthc)
+  
+  # Read data from sheets 8 to 15, one sheet per country
+  us <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 8)
+  china <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 9)
+  india <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 10)
+  aus <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 11)
+  sg <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 12)
+  russia <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 13)
+  algeria <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 14)
+  bangladesh <- read_xlsx(sprintf("raw/day-2020.%s.%s.xlsx", monthc, dayc), sheet = 15)
+  
+  # Clean dates for each country
+  us <- clean_date(us)
+  algeria <- clean_date(algeria)
+  aus <- clean_date(aus)
+  bangladesh <- clean_date(bangladesh)
+  china <- clean_date(china)
+  india <- clean_date(india)
+  russia <- clean_date(russia)
+  sg <- clean_date(sg)
+  
+  # add country name to each row
+  us$country <- "United States"
+  algeria$country <- "Algeria"
+  aus$country <- "Australia"
+  bangladesh$country <- "Bangladesh"
+  china$country <- "China"
+  india$country <- "India"
+  russia$country <- "Russia"
+  sg$country <- "Singapore"
+  
+  comb <- rbind(algeria, aus, bangladesh, china, india, russia, sg, us)
+  
+  # Add that day's data to the compiled dataframe
+  compiled.hourly <- rbind(compiled.hourly, comb)
+}
+
+dim(compiled.hourly)
+head(compiled.hourly)
+```
+The compiled hourly data has 8064 rows, comprising 42 days x 24 hours x 8 countries.
+
+```{r}
+compiled.hourly <- compiled.hourly[,c(1,9:10,2:8)]
+
+# Rename column names so there are no plurals (easier to remember)
+colnames(compiled.hourly)[c(4,7,8)] <- c("local_infection", "web_threat", "network_attack")
+```
+
+
+### 3. Initial Exploration of data
+
+During the collection process, some data was not updated for that day which resulted in missing data. 
+
+We do exploration to view the proportion of missing values.
+
+3.1 Starting with the compiled daily data:
+```{r}
+# Histograms of each type of cyberthreat in compiled daily data
+c.d <- melt(compiled.daily, id.vars = c("date", "country"))
+head(c.d,10)
+
+ggplot(c.d) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars(variable), nrow=3, ncol=3, scales = "free") + labs(title="Histograms of Kaspersky daily data")
+```
+
+
+The first thing to note from this set of histograms is the large number of zero values. These were added in during the compilation, in order that each day's dataframe was the same length.
+
+We can now remove the countries with mostly zero values for the entire period as they are not interesting to our analysis.
+
+```{r}
+# View summary of data, check NA values
+summary(compiled.daily) # There are no NA values
+
+# Check zero values
+table(c.d$variable, c.d$value == 0)
+
+# Proportion of zero values
+prop.table(table(c.d$variable, c.d$value == 0), margin = 1)
+```
+From the tables, 13-22% of each variable are 0s.
+
+```{r}
+# Complete list of countries
+countries <- unique(compiled.daily$country)
+
+# Filter data if number of zeros in country data is less than 0.5 of all values
+countries_filtered <- c()
+
+for (ctry in countries){
+  x <- compiled.daily[compiled.daily$country == ctry,]
+  if (sum(x[3:9] != 0) / (nrow(x) * 7) < 0.5){
+    countries_filtered <- append(countries_filtered, ctry)
+    }
+}
+
+daily.filtered <- subset(compiled.daily, !country %in% countries_filtered)
+dim(daily.filtered) # 8404 out of original 8470 rows
+length(unique(daily.filtered$country)) 
+```
+After filtering out countries with more than 50% zero values, we are left with 191 out of the original 214 countries.
+
+```{r}
+colSums(daily.filtered != 0) # Much higher proportion of non-zero values now
+
+# Melt the dataframe in order to visualise it as histograms
+c.d2 <- melt(daily.filtered, id.vars = c("date", "country"))
+head(c.d2,10)
+
+# Plot histograms again to check zero values
+ggplot(c.d2) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars(variable), nrow=3, ncol=3, scales = "free") + labs(title="Histograms of Kaspersky daily data")
+prop.table(table(c.d2$variable, c.d2$value == 0), margin = 1)
+```
+With countries with mostly zero values removed, the histogram of each cyberthreat has a clearer shape. We can see that web threats and vulnerabilities have somewhat normal distributions, local infections and on demand scans appear to be a combination of 2 normal distributions (or a normal distribution with positive skew), and malicious mail, network attacks and spam appear to have rational distributions.
+
+Note that the values are the proportion of Kaspersky users in each country who experienced a cyberthreat, and these histograms display values for all countries, which differ greatly in size and wealth. The positive skews are likely a result of these differences. 
+
+
+Next, we can plot the data for a randomly chosen country, to view the daily pattern and find missing dates.
+
+```{r}
+# daily.filtered <- daily.filtered[order(daily.filtered$country),]
+
+us <- daily.filtered[daily.filtered$country == 'United States of America',]
+
+# Note: spam is not displayed in this graph because the spam values are much higher than all the rest of the cyberthreats.
+ggplot() + 
+  geom_line(data = us, aes(x = date, y = local_infection), color = "red") +
+  geom_line(data = us, aes(x = date, y = ondemand_scan), color = "blue") +
+  geom_line(data = us, aes(x = date, y = malicious_mail), color = "green") +
+  geom_line(data = us, aes(x = date, y = network_attack), color = "purple") +
+  geom_line(data = us, aes(x = date, y = web_threat), color = "orange") +
+  geom_line(data = us, aes(x = date, y = vulnerabilities), color = "grey") +
+  # geom_line(data = us, aes(x = date, y = spam), color = "brown") +
+  xlab('date') +
+  ylab('proportion of attacks') +
+  scale_x_date(date_breaks = "1 day") +
+  labs(title="Daily cyberthreat data for the US", subtitle="8 August to 20 September 2020") +
+  theme(axis.text.x=element_text(angle=90, hjust=1), legend.position="right") 
+
+china <- daily.filtered[daily.filtered$country == "People's Republic of China",]
+
+ggplot() + 
+  geom_line(data = china, aes(x = date, y = local_infection), color = "red") +
+  geom_line(data = china, aes(x = date, y = ondemand_scan), color = "blue") +
+  geom_line(data = china, aes(x = date, y = malicious_mail), color = "green") +
+  geom_line(data = china, aes(x = date, y = network_attack), color = "purple") +
+  geom_line(data = china, aes(x = date, y = web_threat), color = "orange") +
+  geom_line(data = china, aes(x = date, y = vulnerabilities), color = "grey") +
+  # geom_line(data = china, aes(x = date, y = spam), color = "brown") +
+  xlab('date') +
+  ylab('proportion of attacks') +
+  labs(title="Daily cyberthreat data for People's Republic of China", subtitle="8 August to 20 September 2020") +
+  scale_x_date(date_breaks = "1 day") +
+  theme(axis.text.x=element_text(angle=90, hjust=1), legend.position="right") 
+
+```
+
+
+As shown by the dip in the graph, there is no data on 9 September 2020 as the Kaspersky website was not updated on this date. We would need to impute data for 9 September.
+
+There is also a dip in values on 10-11 August, because the Kaspersky website showed no values for a period of a few hours (10 pm to 5 am). This can be seen from exploration of the hourly dataset (see below).
+
+The graphs also show what seems to be a clear weekly trend for each cyberthreat.
+
+```{r}
+# Imputing data for 9 Sept (a Wednesday)
+# Since there is a clear weekly trend, we can rely on this trend and impute using previous weekdays.
+# Find the mean for Wednesdays (12, 19, 26 Aug, 2 Sep) for each country
+
+wednesdays <- daily.filtered[daily.filtered$date %in% as.Date(c("2020-08-12", "2020-08-19", "2020-08-26", "2020-09-02")),]
+
+head(wednesdays)
+
+wed_new <- wednesdays %>%
+  group_by(country) %>%
+  summarise(local_infection = mean(local_infection),
+            ondemand_scan = mean(ondemand_scan),
+            malicious_mail = mean(malicious_mail),
+            network_attack = mean(network_attack),
+            web_threat = mean(web_threat),
+            vulnerabilities = mean(vulnerabilities),
+            spam = mean(spam))
+
+wed_new$date <- as.Date("2020-09-09")
+wed_new <- wed_new[, c(9,1:8)]
+
+daily.filtered <- rbind(daily.filtered, wed_new)
+daily.filtered <- daily.filtered[order(daily.filtered$country, daily.filtered$date),]
+rownames(daily.filtered) <- NULL
+```
+
+3.2 We now look at the shape of the hourly data, and do some initial exploration.
+
+```{r}
+summary(compiled.hourly)
+``` 
+There are a number of NA values for each cyberthreat. These are the missing values for 10pm on 10 August to 5am on 11 August 2020. In addition, web threats have a larger number of missing values which show up as NAs.
+
+```{r}
+# Create another column with just the date and remove datetime column
+colnames(compiled.hourly)[1] <- "datetime"
+compiled.hourly$date <- date(compiled.hourly$datetime)
+compiled.hourly$datetime <- NULL
+compiled.hourly <- compiled.hourly[, c(10, 1:9)]
+```
+
+```{r}
+c.h <- melt(compiled.hourly, id.vars = c("date", "hour", "country"))
+head(c.h)
+
+ggplot(c.h) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars(variable), nrow=3, ncol=3, scales = "free")
+
+ggplot(c.h) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars(country), nrow=3, ncol=3, scales = "free")
+
+prop.table(table(c.h$variable, is.na(c.h$value)), margin = 1)
+```
+There isn't much we can glean from the histograms per threat, per country or per hour, because the absolute values differ greatly for each of these 3 variables. Dicing is needed to perceive the trends.
+
+```{r}
+# Plotting data for 3 selected countries
+
+ggplot(c.h[c.h$country == "United States", ]) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars(variable), nrow=3, ncol=3, scales = "free") + labs(title="Histograms of hourly data for the United States")
+
+ggplot(c.h[c.h$country == "China", ]) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars(variable), nrow=3, ncol=3, scales = "free") + labs(title="Histograms of hourly data for China")
+
+ggplot(c.h[c.h$country == "India", ]) + geom_histogram(aes(x=value), bins=100) + facet_wrap(facets = vars(variable), nrow=3, ncol=3, scales = "free") + labs(title="Histograms of hourly data for India")
+```
+
+The shapes of data differ significantly between countries - it seems there are different patterns of attack depending on the country. We can explore this further.
+
+```{r}
+
+na.webthreat <- filter(compiled.hourly, is.na(compiled.hourly$web_threat))
+na.localinfection <- filter(compiled.hourly, is.na(compiled.hourly$local_infection))
+
+dim(na.webthreat)
+tail(na.webthreat)
+na.webthreat[na.webthreat$country == "China",]
+```
+### 4. Imputation of Missing Values
+
+4.1 ImputeTS package 
+
+To impute the missing data in the hourly dataset, first I tried using the imputeTS package to do the imputation automatically. However, this did not result in reasonable values - some were even negative. 
+
+Looking at the documentation for imputeTS, this seems to be because the formulae for imputation do not take into account seasonal variation.
+
+```{r}
+## Use imputeTS package on segment of the data (web threats in China)
+statsNA(compiled.hourly[compiled.hourly$country == "China", ]$web_threat) 
+# Useful summary of NA values
+
+ggplot_na_distribution(compiled.hourly[compiled.hourly$country == "China","web_threat"]) 
+# Useful visual representation of NA values in the time series
+  
+ggplot_na_distribution(compiled.hourly[compiled.hourly$country == "China","local_infection"])
+```
+
+
+There are many more missing values in web threats than in other types of threats.
+
+ImputeTS has a few algorithms for imputing missing data, "stine", "spline" and "linear". Each of these are tried:
+
+```{r}
+data_impute_stine <- na_interpolation(compiled.hourly, option = "stine") # not very accurate
+
+data_impute_spline <- na_interpolation(compiled.hourly, option = "spline") # very inaccurate - high negative values
+
+data_impute_linear <- na_interpolation(compiled.hourly, option = "linear") # very inaccurate
+
+summary(data_impute_stine)
+summary(data_impute_spline)
+summary(data_impute_linear)
+
+ggplot() + 
+  geom_line(data = compiled.hourly[compiled.hourly$country == "China",], 
+            aes(x = date, y = local_infection), color = "red")
+
+ggplot() + 
+  geom_line(data = data_impute_stine[data_impute_stine$country == "China",], 
+            aes(x = date, y = local_infection), color = "red")
+
+ggplot() + 
+  geom_line(data = data_impute_spline[data_impute_spline$country == "China",], 
+            aes(x = date, y = local_infection), color = "red")
+
+ggplot() + 
+  geom_line(data = data_impute_linear[data_impute_linear$country == "China",], 
+            aes(x = date, y = local_infection), color = "red")
+```
+
+
+Each of the methods does not recognize the seasonal trend, but tries to draw a line to extrapolate from, or connect, neighbouring values. This leads to negative numbers in certain cases.
+
+4.3 Manually Impute missing values
+
+```{r}
+# Impute missing hours manually using same hour of same day in previous weeks
+
+# impute for 10 Aug 10pm to 11pm
+mondays <- compiled.hourly[compiled.hourly$date %in% as.Date(c("2020-08-17", "2020-08-24", "2020-08-31", "2020-09-07")) & compiled.hourly$hour %in% c(22, 23), ]
+
+monday_new <- mondays %>% 
+  group_by(country, hour) %>% 
+  summarise(local_infection = mean(local_infection),
+            ondemand_scan = mean(ondemand_scan),
+            malicious_mail = mean(malicious_mail),
+            web_threat = mean(web_threat),
+            network_attack = mean(network_attack),
+            vulnerabilities = mean(vulnerabilities),
+            spam = mean(spam))
+
+monday_new$date <- as.Date("2020-08-10")
+monday_new <- monday_new[, c(10, 2, 1, 3:9)]
+monday_new <- as.data.frame(monday_new)
+
+hourly2 <- filter(compiled.hourly, !(compiled.hourly$date == as.Date("2020-08-10") & compiled.hourly$hour %in% c(22,23)))
+
+hourly2 <- rbind(hourly2, monday_new)
+hourly2 <- hourly2[order(hourly2$country, hourly2$date),]
+head(hourly2,40)
+```
+
+
+```{r}
+# impute for 11 Aug midnight to 5am
+
+tuesdays <- compiled.hourly[compiled.hourly$date %in% as.Date(c("2020-08-18", "2020-08-25", "2020-09-01", "2020-09-08")) &
+                  compiled.hourly$hour %in% c(0, 1, 2, 3, 4, 5), ]
+
+tuesday_new <- tuesdays %>% 
+  group_by(country, hour) %>% 
+  summarise(local_infection = mean(local_infection),
+            ondemand_scan = mean(ondemand_scan),
+            malicious_mail = mean(malicious_mail),
+            web_threat = mean(web_threat),
+            network_attack = mean(network_attack),
+            vulnerabilities = mean(vulnerabilities),
+            spam = mean(spam))
+
+tuesday_new$date <- as.Date("2020-08-11")
+tuesday_new <- tuesday_new[, c(10, 2, 1, 3:9)]
+tuesday_new <- as.data.frame(tuesday_new)
+
+hourly3 <- filter(hourly2, !(hourly2$date == as.Date("2020-08-11") & hourly2$hour %in% c(0,1,2,3,4,5)))
+
+hourly3 <- rbind(hourly3, tuesday_new)
+hourly3 <- hourly3[order(hourly3$country, hourly3$date, hourly3$hour),]
+```
+
+```{r}
+## There are too many missing web threat values - remove web threat column
+
+hourly3$web_threat <- NULL
+
+## Impute all values for 9 Sept (Wednesday)
+wed <- hourly3[hourly3$date %in% as.Date(c("2020-08-12", "2020-08-19",
+                                         "2020-08-26", "2020-09-02")), ]
+wed_new <- wed %>% 
+  group_by(country, hour) %>% 
+  summarise(local_infection = mean(local_infection),
+            ondemand_scan = mean(ondemand_scan),
+            malicious_mail = mean(malicious_mail),
+            network_attack = mean(network_attack),
+            vulnerabilities = mean(vulnerabilities),
+            spam = mean(spam))
+
+wed_new$date <- as.Date("2020-09-09")
+wed_new <- wed_new[, c(9, 2, 1, 3:8)]
+wed_new <- as.data.frame(wed_new)
+
+hourly4 <- filter(hourly3, !(hourly3$date == as.Date("2020-09-09")))
+hourly4 <- rbind(hourly4, wed_new)
+hourly4 <- hourly4[order(hourly4$country, hourly4$date),]
+
+summary(hourly4)
+```
+```{r}
+# Checking remaining NAs - should mostly be 0s
+new_DF <- hourly4[rowSums(is.na(hourly4)) > 0,]
+new_DF
+
+# Replace remaining NAs (which are likely to be genuine zero values) with 0
+hourly4[is.na(hourly4)] <- 0
+length(hourly4[is.na(hourly4)]) # no more NAs
+```
+While it would be ideal to obtain the missing values in the daily data from the hourly data, this is not possible because of differences between the two datasets, namely:
+
+1) Hourly data was only collected for 8 countries, while the daily data was collected for 215 countries.
+2) Hourly data is presented as absolute numbers, while daily data is presented as proportions (of the population of Kaspersky users in that country who experienced the threat).
+
+```{r}
+# Order hourly data by country then by date
+hourly4 <- hourly4[order(hourly4$country, hourly4$date),]
+```
+### 5. Write data to file
+
+```{r}
+# write.csv(daily.filtered, "cleaned/dailydata.csv")
+# write.csv(hourly4, "cleaned/hourlydata.csv")
+```
+
+This concludes part one, the compilation and pre-processing of Kaspersky data. In the next part, we will do time series analysis on the data.
+
+This project was carried out as part of the fundamental certificates in Analytics Project Management and Business Analytics Practice in the NUS MTech program. It is my part of a self-directed group project on the wider topic of cybersecurity threats and attacks. 

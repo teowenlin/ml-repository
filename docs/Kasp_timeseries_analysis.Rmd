@@ -1,0 +1,633 @@
+---
+title: "Kaspersky Data Part two: Time Series Analysis"
+author: "Teo Wen Lin"
+date: "03/10/2020"
+output: html_document
+---
+
+In this report, a time series analysis is done on cyberthreat data obtained from the Kaspersky Statistics webpage (https://statistics.securelist.com/). In part one, the compilation, cleaning and pre-processing of data was discussed. In part two below, a time series analysis is carried out on two subsets of the data, using the Holt-Winters and ARIMA models.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+# Load libraries
+library(TTR)
+library(stats)
+library(forecast)
+library(lmtest)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(readxl)
+
+# Read data
+daily <- read.csv("cleaned/dailydata.csv", stringsAsFactors = FALSE)
+hourly <- read.csv("cleaned/hourlydata.csv", stringsAsFactors = FALSE)
+```
+
+#### 1. Timezone shifting
+
+As the data displayed on Kaspersky's Statistics page is in UTC time**, the timezone should be shifted to each country's local timezone.
+
+
+```{r}
+# View the data
+head(hourly)
+hourly[1] <- NULL
+hourly$date <- ymd(hourly$date)
+str(hourly)
+summary(hourly)
+```
+
+```{r}
+# Combine date and time into 1 column
+
+hourly$datetime <- paste0(as.character(hourly$date), " ", as.character(hourly$hour), ":00:00")
+hourly$datetime <- ymd_hms(hourly$datetime)
+hourly <- hourly[, c(10,3:9)]# remove date and hour columns, leaving only datetime
+```
+
+
+```{r}
+# Split data into separate countries
+
+algeria <- hourly[hourly$country == 'Algeria',]
+australia <- hourly[hourly$country == 'Australia',]
+bangladesh <- hourly[hourly$country == 'Bangladesh',]
+china <- hourly[hourly$country == "China",]
+india <- hourly[hourly$country == 'India',]
+russia <- hourly[hourly$country == 'Russia',]
+singapore <- hourly[hourly$country == 'Singapore',]
+us <- hourly[hourly$country == 'United States',]
+
+# Algeria (UTC+1) "Africa/Algiers"
+algeria$datetimelocal <- as.character(with_tz(algeria$datetime, "Africa/Algiers"))
+head(algeria[1:4], 4)
+
+# Bangladesh (UTC+6) "Asia/Dhaka"
+bangladesh$datetimelocal <- as.character(with_tz(bangladesh$datetime, "Asia/Dhaka"))
+head(bangladesh[1:4], 4)
+
+# China (UTC+8) "Asia/Chungking"
+china$datetimelocal <- as.character(with_tz(china$datetime, "Asia/Chungking"))
+head(china[1:4], 4)
+
+# India (UTC+5.5) "Asia/Kolkata"
+india$datetimelocal <- as.character(with_tz(india$datetime, "Asia/Kolkata"))
+head(india[1:4], 4)
+
+# Singapore (UTC+8) "Singapore"
+singapore$datetimelocal <- as.character(with_tz(singapore$datetime, "Singapore"))
+head(singapore[1:4], 4)
+
+# Russia (UTC+3) "Europe/Moscow"
+russia$datetimelocal <- as.character(with_tz(russia$datetime, "Europe/Moscow"))
+head(russia[1:4], 4)
+
+#	US (UTC-5) "US/Mountain" 
+us$datetimelocal <- as.character(with_tz(us$datetime, "US/Mountain"))
+head(us[1:4], 4)
+
+# Australia (UTC+10) "Australia/Brisbane"
+australia$datetimelocal <- as.character(with_tz(australia$datetime, "Australia/Brisbane"))
+head(australia[1:4], 4)
+```
+
+As some countries had more than one timezone (see in particular Russia which spans 9 different time zones), but data was displayed in a single time zone (UTC), each country's data was converted to the time zone of the region with the highest population.
+
+```{r}
+# Combine into new file
+# The datetimelocal column must be in character format and not POSIXct format, otherwise it will revert back to UTC time when different timezones are combined.
+
+newdata <- rbind(algeria, australia, bangladesh, china, india,
+                 russia, singapore, us)
+newdata <- newdata[, c(2, 1, 9, 3:8)]
+
+# Create new date and hour columns
+newdata$date <- date(newdata$datetimelocal)
+newdata$time <- hour(newdata$datetimelocal)
+newdata <- newdata[, c(1:3, 10:11, 4:9)]
+rownames(newdata) <- NULL
+head(newdata)
+```
+
+
+### 2. Preparing data for time series analysis
+
+To carry out time series analysis, we first create a time series object from a subset of the data that we intend to analyse. For this report, we will focus on local infections and network attacks in the US.
+
+```{r}
+# Subset US local infection
+us.local <- newdata[newdata$country == "United States",1:6]
+head(us.local)
+summary(us.local)
+
+us.local%>%
+  ggplot(aes(x=datetime,y=local_infection))+geom_line()
+```
+
+
+```{r}
+# Create Time Series using US Local Infections
+
+# First set: frequency of 24 hours
+uslocal.ts <- ts(us.local$local_infection, frequency=24)
+plot(uslocal.ts)
+
+# Second set: frequency of 168 hours (7 days)
+uslocal.ts2 <- ts(us.local$local_infection, frequency=168)
+# plot(uslocal.ts2)
+```
+
+
+```{r}
+# Plotting the simple moving average with frequency of 24 and 168
+sma <- SMA(uslocal.ts, n=24)
+plot.ts(sma) # smoothing with order=24 reveals the weekly trend
+sma2 <- SMA(uslocal.ts, n=168)
+plot.ts(sma2) # smoothing with order=168 shows an irregular overall trend
+
+length(uslocal.ts)
+```
+
+
+```{r}
+# Decomposing the time series with frequency = 24
+plot(decompose(uslocal.ts)) 
+```
+
+Using frequency of 24, only the daily trend shows up in the seasonal component. The weekly seasons are not captured in the seasonal component but are part of the trend component.  
+
+```{r}
+# Decomposing the time series with frequency = 168
+plot(decompose(uslocal.ts2))
+```
+
+
+The decomposed plot of local infections in the US with frequency of 168 shows that there is a clear daily and weekly trend. It also shows what appears to be an increase, followed by a decrease in the overall trend during the period of 11 August to 19 September. This could be part of a larger cyclical fluctuation, or simply random fluctuations.
+
+A closer look at the overall trend: 
+
+```{r}
+dec <- decompose(uslocal.ts2)
+plot(dec$trend)
+```
+
+This plot is the same as the SMA plot above. As daily and weekly trends are both captured in seasonal component, the overall trend is revealed which appears to be somewhat random.
+
+Next, we divide the data into train and test sets. We do this for the 2 time series datasets with frequency = 24 and with frequency = 168, to observe the differences between the two.
+
+```{r}
+# Train and test sets using freq = 24
+
+train.uslocal_ = subset(uslocal.ts, end=length(uslocal.ts)-168) # first 840 values (5 weeks)
+test.uslocal_ = subset(uslocal.ts, start=length(uslocal.ts)-167) # last 168 values (1 week)
+```
+
+
+#### 3. Holt-Winters models
+
+There are a few packages which can be used to build a Holt-Winters model.
+
+3.1 First is the HoltWinters function found in base R.
+
+```{r}
+# Using HoltWinters function built into base R
+train_ <- HoltWinters(train.uslocal_)
+summary(train_)
+trainforecast_ <- forecast:::forecast.HoltWinters(train_, h=168)
+plot(trainforecast_)
+```
+
+
+The forecast using the dataset with frequency of 24 (hours) can only forecast the daily fluctuation. It does not capture the weekly fluctation, in particular the significant differences between weekdays and weekends.
+
+```{r}
+accuracy(trainforecast_) 
+```
+
+Despite only predicting daily fluctuations, the accuracy of the forecast on the training set seems fairly good, with an MAPE of 3.96%.
+
+
+3.2 We also try using the Holt-Winters function in the forecast package.
+```{r}
+# Using hw function in forecast package 
+hw1.uslocal <- hw(train.uslocal_, model = "AMM", h=168)
+hw1.uslocal$model
+autoplot(hw1.uslocal)
+```
+
+
+```{r}
+accuracy(hw1.uslocal) 
+```
+The accuracy of this model is similar, with MAPE of 3.65.
+
+We add this forecast to a dataframe of forecasts, so that we can compare the accuracy of different models. We use the prediction from the forecast package, rather than from base R, as the MAPE on train is slightly better.
+
+```{r}
+# Create dataframe
+trainforecast.df_ <- data.frame(hw1.uslocal)
+# head(trainforecast.df_)
+# dim(trainforecast.df_)
+trainforecast.df_$Actual <- as.numeric(test.uslocal_)
+colnames(trainforecast.df_)[1] <- "Holtwinters.Predict"
+```
+
+
+3.3 Next, we try the double-seasonality Holt-Winters function from the dshw package.
+This allows 2 seasons to be input, thus we input the daily and weekly periods.
+```{r}
+# Using double-seasonality Holt-Winters forecasting
+hw2.uslocal <- forecast::dshw(train.uslocal_, period1=24, period2=168)
+# summary(hw2.uslocal)
+# hw2.uslocal$model # commented out as it is too long
+autoplot(hw2.uslocal)
+```
+
+As expected, this model captures both daily and weekly seasons.
+
+```{r}
+accuracy(hw2.uslocal) # MAPE on train: 3.41
+```
+The accuracy is better than the previous model, with MAPE of 3.41 on the train set.
+
+```{r}
+# Add the predictions from this model to the forecast dataframe
+train.df_ <- data.frame(hw2.uslocal)
+tail(train.df_)
+
+trainforecast.df_$dshw.Predict <- train.df_[1:168,]
+# Remove the Lo and High prediction boundaries  
+trainforecast.df_[2:5] <- NULL
+
+# Add in actual values from test set
+trainforecast.df_$datetime <- us.local$datetimelocal[841:1008]
+trainforecast.df_$datetime <- ymd_hms(trainforecast.df_$datetime)
+
+# Rearrange columns
+trainforecast.df_ <- trainforecast.df_[, c(4,2,1,3)]
+```
+
+
+```{r}
+# Calculate MAPE errors for HW prediction, on test dataset
+trainforecast.df_$HW.MAE <- abs(trainforecast.df_$Actual - trainforecast.df_$Holtwinters.Predict)
+trainforecast.df_$HW.MAPE <- trainforecast.df_$HW.MAE * 100 / trainforecast.df_$Actual
+
+HW.MAE <- mean(trainforecast.df_$HW.MAE)
+HW.MAPE <- mean(trainforecast.df_$HW.MAPE)
+HW.MAPE # MAPE on test: 10.1
+
+# Calculate MAPE errors for DSHW prediction, on test dataset
+trainforecast.df_$dshw.MAE <- abs(trainforecast.df_$Actual - trainforecast.df_$dshw.Predict)
+trainforecast.df_$dshw.MAPE <- trainforecast.df_$dshw.MAE * 100 / trainforecast.df_$Actual
+
+dshw.MAE <- mean(trainforecast.df_$dshw.MAE)
+dshw.MAPE <- mean(trainforecast.df_$dshw.MAPE)
+dshw.MAPE # MAPE on test: 3.57 - about the same result as freq = 168 below, because dshw takes into account both daily and weekly seasonalities
+```
+3.4 We now repeat this process, using the dataset with frequency = 168.
+
+```{r}
+# Train and test sets using freq = 168
+train.uslocal = subset(uslocal.ts2, end=length(uslocal.ts2)-168) # first 840 values (5 weeks)
+test.uslocal = subset(uslocal.ts2, start=length(uslocal.ts2)-167) # last 168 values (1 week)
+```
+
+```{r}
+# Using HoltWinters function built into base R
+train <- HoltWinters(train.uslocal)
+# summary(train)
+trainforecast <- forecast:::forecast.HoltWinters(train, h=168)
+plot(trainforecast)
+```
+
+
+```{r}
+accuracy(trainforecast) # MAPE on train: 2.62
+# summary(trainforecast)
+```
+
+
+```{r}
+# Add to new dataframe
+trainforecast.df <- data.frame(trainforecast)
+head(trainforecast.df)
+dim(trainforecast.df)
+trainforecast.df$Actual <- as.numeric(test.uslocal)
+colnames(trainforecast.df)[1] <- "Holtwinters.Predict"
+```
+
+We cannot use the hw function from the forecast package on this dataset, because this function does not accept a frequency higher than 24. (see: https://robjhyndman.com/hyndsight/longseasonality/)
+```{r}
+# Using hw function in forecast package does not work with freq 168
+# hw2.uslocal <- hw(train.uslocal, model = "AMM")
+# hw2.uslocal$model
+# plot(hw2.uslocal)
+# accuracy(hw2.uslocal)
+```
+
+
+```{r}
+# Using double-seasonality Holt-Winters forecasting
+hw3.uslocal <- forecast::dshw(train.uslocal, period1=24, period2=168)
+# summary(hw3.uslocal)
+# hw3.uslocal$model
+autoplot(hw3.uslocal)
+accuracy(hw3.uslocal) # MAPE on train: 3.41
+```
+
+
+```{r}
+# Add forecasts to dataframe
+train.df2 <- data.frame(hw3.uslocal)
+
+trainforecast.df$dshw.Predict <- train.df2[1:168,]
+trainforecast.df[2:5] <- NULL
+
+trainforecast.df$datetime <- us.local$datetimelocal[841:1008]
+trainforecast.df$datetime <- ymd_hms(trainforecast.df$datetime)
+trainforecast.df <- trainforecast.df[, c(4,2,1,3)]
+trainforecast.df$HW.MAE <- abs(trainforecast.df$Actual - trainforecast.df$Holtwinters.Predict)
+trainforecast.df$HW.MAPE <- trainforecast.df$HW.MAE * 100 / trainforecast.df$Actual
+
+HW.MAE <- mean(trainforecast.df$HW.MAE)
+HW.MAPE <- mean(trainforecast.df$HW.MAPE) 
+HW.MAPE # MAPE on test: 4.88
+```
+
+```{r}
+trainforecast.df$dshw.MAE <- abs(trainforecast.df$Actual - trainforecast.df$dshw.Predict)
+trainforecast.df$dshw.MAPE <- trainforecast.df$dshw.MAE * 100 / trainforecast.df$Actual
+
+dshw.MAE <- mean(trainforecast.df$dshw.MAE)
+dshw.MAPE <- mean(trainforecast.df$dshw.MAPE)
+dshw.MAPE # MAPE on test: 3.57
+```
+
+#### 4. ARIMA models
+
+Next, we attempt to build ARIMA models on the dataset.
+As there are seasons in the data and a possible overall trend, each component (AR, I and MA) is likely to be needed.
+
+4.1 First, using the available packages in R, which are the basic stats package and the forecast package. These codes were only successfully run once, as the machine tended to take very long or freeze when running them. They are therefore commented out in the code chunk below.
+
+```{r}
+# NOTE: Codes were only run once as local device froze when run a second time onwards
+
+# using arima from basic stats package
+# model1 = arima(train.uslocal, order = c(1,1,2), seasonal=c(0,2,2))
+# summary(model1)
+# coeftest(model1)
+# 
+# # model tuning
+# model2 = arima(train.uslocal, order = c(1,1,1), seasonal=c(0,1,1))
+# summary(model2)
+# coeftest(model2)
+# acf(model2, lag.max=50)
+# pacf(model2, lag.max=50)
+# Box.test(model2$residuals, lag=20, type="Ljung-Box")
+# 
+# model3 = arima(train.uslocal, order = c(1,1,2), seasonal=c(0,1,1))
+# summary(model3)
+# coeftest(model3)
+# acf(model3, lag.max=50)
+# pacf(model3, lag.max=50)
+# Box.test(model3$residuals, lag=20, type="Ljung-Box")
+# 
+# model4 = arima(train.uslocal, order = c(1,1,2), seasonal=c(1,1,1))
+# summary(model4)
+# coeftest(model4)
+# acf(model4, lag.max=50)
+# pacf(model4, lag.max=50)
+# Box.test(model4$residuals, lag=20, type="Ljung-Box")
+# 
+# # Using Arima from forecast package
+# model5 = Arima(train.uslocal, order = c(1,1,2), seasonal=c(0,2,2))
+# summary(model5)
+# coeftest(model5)
+# forecast(model5)
+# acf(model5, lag.max=20)
+# pacf(model5, lag.max=50)
+# Box.test(model5$residuals, lag=20, type="Ljung-Box")
+# 
+# checkresiduals(model5)
+# 
+# # forecast the next 168 values
+# forecasted_values = forecast(model4, 168)
+# forecasted_values
+# # visual inspection of forecast
+# autoplot(forecasted_values, lwd=8)
+# 
+# # Using Auto-ARIMA to complement manual tuning
+# 
+# fitAutoArima = auto.arima(uslocal.ts)
+# fitAutoArima # different model - ARIMA(1,0,1)(2,1,0)[24]
+# coeftest(fitAutoArima) # p values
+# accuracy(fitAutoArima) # not as good as model4 accuracy
+```
+
+4.2 As an alternative, JMP software was used to build ARIMA models. The result of the best 3 models, and 1 more for contrast, were saved in a csv file and imported.
+
+```{r}
+# Import JMP Arima models
+arima.p <- read_xlsx("analysis/us_predict.xlsx", sheet = 1, range="D505:G672", col_names=c("Predict_112022", "Predict_222022", "Predict_222122", "Predict_112012"))
+dim(arima.p)
+colnames(arima.p)
+
+trainforecast.df$Arima1 <- arima.p$Predict_112022
+trainforecast.df$Arima2 <- arima.p$Predict_222022
+trainforecast.df$Arima3 <- arima.p$Predict_222122
+trainforecast.df$Arima4 <- arima.p$Predict_112012
+```
+
+### 5. Comparison of the various models on local infection data in US
+
+A graph is created to visualise the results of each model built against the actual values of the test dataset.
+
+```{r}
+# Plot forecasts and actual
+ggplot(data = trainforecast.df) +
+  geom_line(aes(x = datetime, y = Actual, color = "Actual values")) +
+  geom_line(aes(x = datetime, y = Holtwinters.Predict, color = "Holt-Winters")) + 
+  geom_line(aes(x = datetime, y = dshw.Predict, 
+                color = "double-seasonality Holt-Winters")) +
+  geom_line(aes(x = datetime, y = Arima2, color = "ARIMA(2,2,2)(1,2,2)168")) +
+  geom_line(aes(x = datetime, y = Arima4, color = "ARIMA(1,1,2)(0,1,2)168")) +
+  theme_light() +
+  labs(title = "Comparison of time series model predictions to Actual values",
+       subtitle = "local infections of Kaspersky users in the United States") +
+  theme(legend.position = "right",
+        panel.background = element_rect(fill = 'snow2'),
+        axis.text.x = element_text(size=9)) +
+  scale_fill_identity(name = 'Forecast', guide = 'legend') +
+  scale_colour_manual(name = "Forecast", values = c('black', 'red', 'purple','orange', "blue")) +
+  scale_y_continuous(name='Number of cyber-threats')
+ # scale_x_datetime(name = 'Datetime'))
+```
+
+Each model performs fairly well as the data is quite orderly and predictable.
+
+Surprisingly, the ARIMA model which was weighted lowly in JMP's model comparison (due to high AIC value, although it had a lower MAPE than the highly-weighted models) performed better than the others on the test set.
+
+
+#### 6. Time series models on Network Attack data in the US
+
+Our next dataset is network attack data in the US.
+We carry out the same steps as shown above for the local infection data.
+
+```{r}
+# Running models on US Network Attacks
+
+us.net <- newdata[newdata$country == "United States",c(1:5,9)]
+head(us.net)
+usnet.ts <- ts(us.net$network_attack, frequency=24)
+plot(usnet.ts)
+length(usnet.ts)
+```
+
+
+```{r}
+plot(decompose(usnet.ts))
+```
+
+The network attack data is less orderly, and appears to have an upward overall trend.
+
+```{r}
+# Train and test sets
+train.usnet = subset(usnet.ts, end=length(usnet.ts)-168) # first 840 values (5 weeks)
+test.usnet = subset(usnet.ts, start=length(usnet.ts)-167) # last 168 values (1 week)
+```
+
+
+```{r}
+# HoltWinters
+trainnet <- HoltWinters(train.usnet)
+trainnet.fc <- forecast:::forecast.HoltWinters(trainnet, h=168)
+plot(trainnet.fc)
+# summary(trainnet.fc)
+```
+```{r}
+accuracy(trainnet.fc)
+```
+
+
+```{r}
+net.df <- data.frame(trainnet.fc)
+head(net.df)
+net.df$Actual <- as.numeric(test.usnet)
+colnames(net.df)[1] <- "Holtwinters.Predict"
+```
+
+
+```{r}
+# Double-seasonality Holt-Winters forecasting
+hw.usnet <- dshw(train.usnet, period1=24, period2=168)
+hw.usnet$model # alpha=0.09, beta=0.03
+autoplot(hw.usnet)
+```
+
+The accuracy of the double-seasonality Holt-Winters model is very poor on the network attack dataset. This is probably because there is greater fluctuation in the data. However, there is still a discernable daily and weekly trend. It seems that the downward trend of the forecast is unduly influenced by the fluctuations in values. We thus adjust the smoothing parameters manually to try to get a better result.
+
+Increasing the alpha (smoothing parameter on the level) and decreasing the beta value (smoothing parameter on the trend) gives a better result. This corresponds to the significant fluctuations in seasonal variance, and the somewhat consistent upward trend.
+
+```{r}
+hw.usnet2 <- dshw(train.usnet, period1=24, period2=168, alpha=0.2, beta=0.01)
+# summary(hw.usnet)
+autoplot(hw.usnet2)
+```
+
+```{r}
+accuracy(hw.usnet) # MAPE on train: 7.64
+accuracy(hw.usnet2) # MAPE on train: 7.67
+```
+The accuracy of both dshw models are comparable.
+
+```{r}
+train.df2 <- data.frame(hw.usnet2)
+tail(train.df2)
+net.df$dshw.Predict <- train.df2[1:168,]
+net.df[2:5] <- NULL
+
+net.df$datetime <- us.net$datetimelocal[841:1008]
+net.df$datetime <- ymd_hms(net.df$datetime)
+net.df <- net.df[, c(4,2,1,3)]
+net.df$HW.MAE <- abs(net.df$Actual - net.df$Holtwinters.Predict)
+net.df$HW.MAPE <- net.df$HW.MAE * 100 / net.df$Actual
+
+HW.MAE <- mean(net.df$HW.MAE)
+HW.MAPE <- mean(net.df$HW.MAPE)
+HW.MAPE
+
+net.df$dshw.MAE <- abs(net.df$Actual - net.df$dshw.Predict)
+net.df$dshw.MAPE <- net.df$dshw.MAE * 100 / net.df$Actual
+
+dshw.MAE <- mean(net.df$dshw.MAE)
+dshw.MAPE <- mean(net.df$dshw.MAPE)
+dshw.MAPE
+```
+
+As above, ARIMA analysis was done in JMP and imported.
+
+```{r}
+#### Import JMP ARIMA files
+arimanet <- read_xlsx("analysis/us_predict.xlsx", sheet = 2, range="E504:F671", col_names=c("Predict_222022", "Predict_222122"))
+net.df$Arima1 <- arimanet$Predict_222022
+net.df$Arima2 <- arimanet$Predict_222122
+```
+
+### 7. Comparison of models on network attack data in US
+
+```{r}
+# Plot forecasts against actual values
+ggplot(data = net.df) +
+  geom_line(aes(x = datetime, y = Actual, color = "Actual values")) +
+  geom_line(aes(x = datetime, y = Holtwinters.Predict, color = "Holt-Winters")) + 
+  geom_line(aes(x = datetime, y = dshw.Predict, 
+                color = "double-seasonality Holt-Winters")) +
+  geom_line(aes(x = datetime, y = Arima1, color = "ARIMA(2,2,2)(0,2,2)168")) +
+  geom_line(aes(x = datetime, y = Arima2, color = "ARIMA(2,2,2)(1,2,2)168")) +
+  theme_light() +
+  labs(title = "Comparison of time series model predictions to Actual values",
+       subtitle = "Network attacks on Kaspersky users in the United States") +
+  theme(legend.position = "right",
+        panel.background = element_rect(fill = 'snow2'),
+        axis.text.x = element_text(size=9)) +
+  scale_fill_identity(name = 'Forecast', guide = 'legend') +
+  scale_colour_manual(name = "Forecast", values = c('black', 'red', 'purple','orange', 'blue')) +
+  scale_y_continuous(name='Number of cyber-threats')
+```
+
+
+Lastly, we compare the accuracy of each model for both datasets (local infections, and network attacks).
+
+For the ARIMA models, MAPE on the train set were shown in the JMP software while MAPE on the test sets were calculated using Excel.
+
+```{r}
+# Print the table of errors for each model
+
+li.results <- data.frame(model = c("Holt-Winters", "Double-Seasonal Holt-Winters", "Arima112022", "Arima222022", "Arima222122"), train.MAPE = c(2.62, 3.41, 5.12, 5.31, 5.30), test.MAPE = c(4.88, 3.57, 6.73, 6.0, 5.50))
+
+net.results <- data.frame(model = c("Holt-Winters", "Double-Seasonal Holt-Winters", "Arima222022", "Arima222122"), train.MAPE = c(6.29, 7.67, 10.1, 11.6), test.MAPE = c(20.27, 24.1, 25.4, 25.5))
+```
+
+MAPE for each model for local infections, on train and test sets:
+```{r}
+li.results
+```
+
+MAPE for each model for network attacks, on train and test sets:
+```{r}
+net.results
+
+```
+
+
+Based on the test errors, the best performing model for local infection setdata appears to be the double seasonal HW, while the best performing model for network attacks appears to be the single seasonal Holt-Winters.
+
+This project was carried out as part of the fundamental certificates in Analytics Project Management and Business Analytics Practice in the NUS MTech program. It is my portion of a self-directed group project on the wider topic of cybersecurity threats and attacks. 
+
+** An assumption was made that the data on Kaspersky's Statistics page is in UTC time. This was arrived at by looking at the peaks of local infection data for various countries; the peaks corresponded to around 10am - 12pm if the time were converted to each country's time zone.
