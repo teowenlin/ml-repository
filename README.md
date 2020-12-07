@@ -6,7 +6,7 @@ Machine learning projects
 - forming wordclouds of each reddit thread
 - clustering of posts into clusters 
 
-2. Kaspersky Project in R (combine_process.html; timeseries_analysis.html)
+2. Kaspersky Project in R (Kasp_combine_process.html; Kasp_timeseries_analysis.html)
 - collation of data downloaded from Kaspersky Statistics webpage
 - cleaning, filtering, imputation of missing data, adjustment of timezones
 - time series analysis on hourly data
