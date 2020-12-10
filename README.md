@@ -16,4 +16,4 @@ Machine learning projects
 - collaborative filtering - alternating least squares algorithm for recommendation of movies to critics based on latent factors in movie titles (CF-ALS.py)
 - colaborative filtering - recommending movies to critics based on critic's similarity to other critics in graph/network (CF_User_Based.py) (ongoing)
 
-4. (Pending) Multiple Linear Regression analysis of division of assets in matrimonial disputes in Singapore from 2005-present
+4. (Pending) Multiple Linear Regression analysis of ancillary orders in matrimonial disputes (division of assets) in Singapore from 2005-present
